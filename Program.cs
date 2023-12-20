@@ -9,12 +9,12 @@ var outputType = OutputType.JSON; // JSON, HTML, TXT (WIP)
 try
 {   
     Console.WriteLine("Select source file location and name: ");
-    Console.WriteLine("(example, C:\\Users\\<yourusername>\\Documents\\TableParser\\file_to_be_parsed.md)");
+    Console.WriteLine("(example, C:\\Users\\<yourusername>\\Documents\\file_to_be_parsed.md)");
     Console.WriteLine("(alternatively, input just the filename to attempt to retrieve it from the Documents folder, like: file_to_be_parsed.md)");
-    //var input = Console.ReadLine();
-    var input = @"C:\Users\kkirchhof\Documents\TableParser\input.md";
+    var input = Console.ReadLine() ?? "";
+    //var input = @"C:\Users\kkirchhof\Documents\TableParser\input.md";
     // Set path for reading and writing (can technically be different, if needed). Default: current user's Documents folder (has -RW access generally)
-    string docPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)+"\\TableParser\\";
+    string docPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)+"\\";
     string docName = "input.md";
     var fullFilePath = $"{docPath}{docName}";
     if (input == ""){
