@@ -11,21 +11,21 @@ try
     Console.WriteLine("Select source file location and name: ");
     Console.WriteLine("(example, C:\\Users\\<yourusername>\\Documents\\TableParser\\file_to_be_parsed.md)");
     Console.WriteLine("(alternatively, input just the filename to attempt to retrieve it from the Documents folder, like: file_to_be_parsed.md)");
-    var input = Console.ReadLine();
+    //var input = Console.ReadLine();
+    var input = @"C:\Users\kkirchhof\Documents\TableParser\input.md";
     // Set path for reading and writing (can technically be different, if needed). Default: current user's Documents folder (has -RW access generally)
     string docPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)+"\\TableParser\\";
     string docName = "input.md";
     var fullFilePath = $"{docPath}{docName}";
-    Console.WriteLine("Path: "+docPath+". Full: "+fullFilePath);
-    if (input == null){
+    if (input == ""){
         throw new Exception("Input empty.");
     }
-    if (input.Contains('\\')){
-        fullFilePath = input;
-    } else {
-        fullFilePath = $"{docPath}{input}";
-    }
 
+    if (input.Contains('\\')){
+        fullFilePath = input.Replace("\\", "\\\\");
+    } else {
+        fullFilePath = $"{docPath}{input}".Replace("\\", "\\\\");
+    }
     //Pass the file path and file name to the StreamReader constructor
     StreamReader sr = new StreamReader(fullFilePath);
     // Extension type of file (decides RegEx to use)
