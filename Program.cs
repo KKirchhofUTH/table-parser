@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 String? line;
 String[] arr = [];
 StringBuilder outputString = new();
+List<Array> txtArrays = new List<Array>();
 var outputType = OutputType.JSON; // JSON, HTML, TXT (WIP)
 var outputStyle = OutputStyle.GitLabTable; // GitLabTable, OpenProjectsTable
 try
@@ -13,7 +14,7 @@ try
     Console.WriteLine("(example, C:\\Users\\<yourusername>\\Documents\\file_to_be_parsed.md)");
     Console.WriteLine("(alternatively, input just the filename to attempt to retrieve it from the Documents folder, like: file_to_be_parsed.md)");
     var input = Console.ReadLine() ?? "";
-    //var input = @"C:\Users\kkirchhof\Documents\input.csv";
+    //var input = @"C:\Users\kkirchhof\Documents\input.txt";
     // Set path for reading and writing (can technically be different, if needed). Default: current user's Documents folder (has -RW access generally)
     string docPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)+"\\";
     string docName = "input.json";
@@ -60,6 +61,9 @@ try
     } else if (extension == ".json"){
         // table-parser JSON table input
         // Does not use RegEx, but rather IndexOf
+    } else if (extension == ".txt"){
+        // Assuming tab-delimited file, as that is what SSMS outputs to .txt
+        regEx = new Regex("[a-z0-9()_-]+", RegexOptions.IgnoreCase);
     }
     
     if(line != null){
@@ -118,6 +122,20 @@ try
                     throw new Exception("JSON file does not contain 'label' within the 'fields' section.");
 
                 colFullNamesList.Add(line.Substring(indexStart + 9, indexEnd - (indexStart + 7))); // Start index + characters until actual label name, length of characters + 1 to consider 0 index
+                line = sr.ReadLine();
+            }
+            colFullNames = colFullNamesList.ToArray();
+        } 
+        // TXT (tab-delimited, new line per column) input
+        // Have to read full text right away, as all lines contain column names, but also potential values
+        else if (extension == ".txt") {
+            var colFullNamesList = new List<string>();
+            while (line != null) {
+                var row = regEx.Matches(line).OfType<Match>()
+                                .Select(m => m.Groups[0].Value)
+                                .ToArray();
+                colFullNamesList.Add(row[0]);
+                txtArrays.Add(row);
                 line = sr.ReadLine();
             }
             colFullNames = colFullNamesList.ToArray();
@@ -183,8 +201,8 @@ try
         if (outputType == OutputType.JSON)
             outputString.AppendLine(indent+"\"items\" : [");
         
-        line = sr.ReadLine();
         if (outputStyle == OutputStyle.GitLabTable) {
+            line = sr.ReadLine();
             while (line != null)
             {
                 // MD or CSV input
@@ -277,7 +295,15 @@ try
             {
                 outputString.AppendLine(indent+$"<tr id=\"{colIdNames[i]}\">");
                 outputString.AppendLine(indent+indent+$"<td>{colFullNames[i]}</td>");
-                outputString.AppendLine(indent+indent+$"<td></td>");
+                if (txtArrays.Count > 0 && txtArrays[i] != null && txtArrays[i].GetValue(1) != null){
+                    if (txtArrays[i].GetValue(2) != null && txtArrays[i].GetValue(2).ToString().ToLower() == "unchecked")
+                        outputString.AppendLine(indent+indent+$"<td>{txtArrays[i].GetValue(1)}, not null</td>");
+                    else 
+                        outputString.AppendLine(indent+indent+$"<td>{txtArrays[i].GetValue(1)}</td>");
+                }
+                else {
+                    outputString.AppendLine(indent+indent+$"<td></td>");
+                }
                 outputString.AppendLine(indent+indent+$"<td></td>");
                 outputString.AppendLine(indent+"</tr>");
             }
@@ -307,7 +333,7 @@ try
 
     //close the file
     sr.Close();
-    Console.ReadLine();
+    //Console.ReadLine(); Uncomment to leave program running until enter is hit in the console
 }
 catch(Exception e)
 {
