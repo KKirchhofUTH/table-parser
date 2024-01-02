@@ -3,19 +3,20 @@ using System.Text;
 using System.Text.RegularExpressions;
 
 String? line;
-String[] arr;
+String[] arr = [];
 StringBuilder outputString = new();
 var outputType = OutputType.JSON; // JSON, HTML, TXT (WIP)
+var outputStyle = OutputStyle.GitLabTable; // GitLabTable, OpenProjectsTable
 try
 {   
     Console.WriteLine("Select source file location and name: ");
     Console.WriteLine("(example, C:\\Users\\<yourusername>\\Documents\\file_to_be_parsed.md)");
     Console.WriteLine("(alternatively, input just the filename to attempt to retrieve it from the Documents folder, like: file_to_be_parsed.md)");
     var input = Console.ReadLine() ?? "";
-    //var input = @"C:\Users\kkirchhof\Documents\TableParser\input.md";
+    //var input = @"C:\Users\kkirchhof\Documents\input.csv";
     // Set path for reading and writing (can technically be different, if needed). Default: current user's Documents folder (has -RW access generally)
     string docPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)+"\\";
-    string docName = "input.md";
+    string docName = "input.json";
     var fullFilePath = $"{docPath}{docName}";
     if (input == ""){
         throw new Exception("Input empty.");
@@ -47,15 +48,18 @@ try
     int idIndex = 3; // 0 index column number for where to get index name, for DEMOGRAPHICS, Target Column = 3
     int sourceIndex = 6; // 0 index column number for where to get source name, for DEMOGRAPHICS, Transformation Notes = 6
     string indent = "    "; // To keep indent consistent and easily changeable - default 4 spaces
-    String[] colFullNames; // Full column names for table header
+    String[] colFullNames = []; // Full column names for table header
     String[] colIdNames; // Lower case, dash connected column names for td ids
     Regex regEx = new Regex(".*");
     if (extension == ".csv"){
-        // CSV to HTML
+        // CSV input
         regEx = new Regex("[a-z0-9\\.\\*\\s\\-_]+,{1}|[^,].+|,|(\".+\")", RegexOptions.IgnoreCase); // Comma separated values, including empty and quote encapsuled ones
     } else if (extension == ".md"){    
-        // MD to HTML
+        // MD input
         regEx = new Regex("[^\\-\\|][a-z0-9\\.\\*\\s\\-_,'>\"+()%&@=$#!?/:]+", RegexOptions.IgnoreCase); // Pipe separated.
+    } else if (extension == ".json"){
+        // table-parser JSON table input
+        // Does not use RegEx, but rather IndexOf
     }
     
     if(line != null){
@@ -72,7 +76,7 @@ try
                 outputString.AppendLine(indent+"<tr id=\"table-header\">");
                 break;
             case OutputType.TXT:
-                outputString.AppendLine();
+                outputString.AppendLine("HEADER");
                 break;
             default:
                 outputString.AppendLine();
@@ -80,122 +84,80 @@ try
         }
 
         // HEADER
-        // First line should be column names
-        colFullNames = regEx.Matches(line).OfType<Match>()
-                            .Select(m => {
-                            if(m.Groups[0].Value.EndsWith(',')){
-                                return m.Groups[0].Value.Substring(0, m.Groups[0].Value.Length - 1).Replace("\"", "\\\""); // Remove delimiting comma, and add escape character to quotes
-                            }
-                            else if (m.Groups[0].Value.StartsWith('\"') && m.Groups[0].Value.EndsWith('\"'))
-                            {
-                                return m.Groups[0].Value.Substring(1, m.Groups[0].Value.Length - 2).Replace("\"", "\\\""); // Remove quotes added to encapsulate comma containing string, and add escape character to quotes
-                            }
-                            else 
-                            {
-                                return m.Groups[0].Value.Trim().Replace("\"", "\\\""); // Trim spaces (especially important with Markdown), and add escape character to quotes
-                            }
-                            })
-                            .ToArray();
+        // MD or CSV input
+        // First matched line should be column names
+        if (extension == ".md" || extension == ".csv") {
+            colFullNames = regEx.Matches(line).OfType<Match>()
+                                .Select(m => {
+                                if(m.Groups[0].Value.EndsWith(',')){
+                                    return m.Groups[0].Value.Substring(0, m.Groups[0].Value.Length - 1).Replace("\"", "\\\""); // Remove delimiting comma, and add escape character to quotes
+                                }
+                                else if (m.Groups[0].Value.StartsWith('\"') && m.Groups[0].Value.EndsWith('\"'))
+                                {
+                                    return m.Groups[0].Value.Substring(1, m.Groups[0].Value.Length - 2).Replace("\"", "\\\""); // Remove quotes added to encapsulate comma containing string, and add escape character to quotes
+                                }
+                                else 
+                                {
+                                    return m.Groups[0].Value.Trim().Replace("\"", "\\\""); // Trim spaces (especially important with Markdown), and add escape character to quotes
+                                }
+                                })
+                                .ToArray();
+        } 
+        // JSON input
+        else if (extension == ".json"){
+            while (line != null && !line.Contains("fields")) // Keep going through the initial lines until we find "fields"
+                line = sr.ReadLine();
+
+            line = sr.ReadLine(); // First line would be the line after "fields"
+            var colFullNamesList = new List<string>();
+            while (line != null && !line.Trim().StartsWith("],")) {// Get header names until we reach end of "fields" (presumably with a line starting with "],")
+                var indexStart = line.IndexOf("label");
+                var indexEnd = line.IndexOf("sortable") > -1 ? line.IndexOf("sortable") - 6 : line.IndexOf("}") - 2;
+
+                if(indexStart == -1)
+                    throw new Exception("JSON file does not contain 'label' within the 'fields' section.");
+
+                colFullNamesList.Add(line.Substring(indexStart + 9, indexEnd - (indexStart + 7))); // Start index + characters until actual label name, length of characters + 1 to consider 0 index
+                line = sr.ReadLine();
+            }
+            colFullNames = colFullNamesList.ToArray();
+        }
 
         colIdNames = new String[colFullNames.Length];
-        for(var i = 0; i < colFullNames.Length; i++)
-        {
-            colIdNames[i] = colFullNames[i].ToLower().Replace(' ', '-');
-            switch (outputType)
+        // GitLabTable output (default)
+        if (outputStyle == OutputStyle.GitLabTable) {
+            for(var i = 0; i < colFullNames.Length; i++)
             {
-                case OutputType.JSON:
-                    outputString.Append(indent+indent+"{\"key\": \""+colIdNames[i]+"\", \"label\": \""+colFullNames[i]+"\", \"sortable\": true}");
-                    if (i == colFullNames.Length - 1) {// If last line, don't add ","
+                colIdNames[i] = colFullNames[i].ToLower().Replace(' ', '-');
+                switch (outputType)
+                {
+                    case OutputType.JSON:
+                        outputString.Append(indent+indent+"{\"key\": \""+colIdNames[i]+"\", \"label\": \""+colFullNames[i]+"\", \"sortable\": true}");
+                        if (i == colFullNames.Length - 1) {// If last line, don't add ","
+                            outputString.AppendLine();
+                            break;
+                        }
+
+                        outputString.AppendLine(",");
+                        break;
+                    case OutputType.HTML:
+                        outputString.AppendLine(indent+indent+$"<th id=\"{colIdNames[i]}-header\">{colFullNames[i]}</th>");
+                        break;
+                    case OutputType.TXT:
                         outputString.AppendLine();
                         break;
-                    }
-
-                    outputString.AppendLine(",");
-                    break;
-                case OutputType.HTML:
-                    outputString.AppendLine(indent+indent+$"<th id=\"{colIdNames[i]}-header\">{colFullNames[i]}</th>");
-                    break;
-                case OutputType.TXT:
-                    outputString.AppendLine();
-                    break;
-                default:
-                    outputString.AppendLine();
-                    break;
+                    default:
+                        outputString.AppendLine();
+                        break;
+                }
             }
-        }
 
-        switch (outputType)
-        {
-            case OutputType.JSON:
-                outputString.AppendLine(indent+"],");
-                break;
-            case OutputType.HTML:
-                outputString.AppendLine(indent+"</tr>");
-                break;
-            case OutputType.TXT:
-                outputString.AppendLine();
-                break;
-            default:
-                outputString.AppendLine();
-                break;
-        }
-        // END HEADER
-
-        // TABLE ROWS
-        if (outputType == OutputType.JSON)
-            outputString.AppendLine(indent+"\"items\" : [");
-        line = sr.ReadLine();
-        while (line != null)
-        {
-            arr = regEx.Matches(line).OfType<Match>()
-                            .Select(m => {
-                            if(m.Groups[0].Value.EndsWith(',')){
-                                return m.Groups[0].Value.Substring(0, m.Groups[0].Value.Length - 1).Replace("\"", "\\\""); // Remove delimiting comma, and add escape character to quotes
-                            }
-                            else if (m.Groups[0].Value.StartsWith('\"') && m.Groups[0].Value.EndsWith('\"'))
-                            {
-                                return m.Groups[0].Value.Substring(1, m.Groups[0].Value.Length - 2).Replace("\"", "\\\""); // Remove quotes added to encapsulate comma containing string, and add escape character to quotes
-                            }
-                            else 
-                            {
-                                return m.Groups[0].Value.Trim().Replace("\"", "\\\""); // Trim spaces (especially important with Markdown), and add escape character to quotes
-                            }
-                            })
-                            .ToArray();
-            // Skip "empty" lines
-            if (arr.Length == 0 && sr.ReadLine() != null){
-                line = sr.ReadLine();
-                continue;
-            }
-            
-            if(arr.Length != colFullNames.Length)
-                throw new Exception($"Column size mismatch between header row and subsequent data row, {colFullNames.Length} vs {arr.Length}, with {arr[arr.Length-1]}");
-
-            // Get source name || TODO: Make this generic for general use
-            var rxCheckForSource = new Regex("Epic|MHH|AllScripts|GECBI|All data sources");
-            var source = rxCheckForSource.Match(arr[sourceIndex]).Value.Trim().Replace(" ", "-");
-
-            // Create row
             switch (outputType)
             {
                 case OutputType.JSON:
-                    outputString.Append(indent+indent+"{");
-                    for (var i = 0; i < arr.Length; i++)
-                    {
-                        outputString.Append("\""+colIdNames[i]+"\": \""+arr[i]+"\"");
-
-                        if(i != arr.Length - 1){
-                            outputString.Append(", ");
-                        }
-                    }
-                    outputString.AppendLine("},");
+                    outputString.AppendLine(indent+"],");
                     break;
                 case OutputType.HTML:
-                    outputString.AppendLine(indent+$"<tr id=\"{arr[idIndex].ToLower()}-{source.ToLower()}\">");
-                    for (var i = 0; i < arr.Length; i++)
-                    {
-                        outputString.AppendLine(indent+indent+$"<td id=\"{colIdNames[i].ToLower()}-{arr[idIndex].ToLower()}-{source.ToLower()}\">{arr[i]}</td>");
-                    }
                     outputString.AppendLine(indent+"</tr>");
                     break;
                 case OutputType.TXT:
@@ -205,9 +167,120 @@ try
                     outputString.AppendLine();
                     break;
             }
+        } else if (outputStyle == OutputStyle.OpenProjectsTable) {
+            for(var i = 0; i < colFullNames.Length; i++)
+            {
+                colIdNames[i] = colFullNames[i].ToLower().Replace(' ', '-');
+            }
+            outputString.AppendLine(indent+indent+"<th id=\"column-name-header\">Column name</th>");
+            outputString.AppendLine(indent+indent+"<th id=\"description-header\">Description</th>");
+            outputString.AppendLine(indent+indent+"<th id=\"notes-header\">Notes</th>");
+            outputString.AppendLine(indent+"</tr>");
+        }
+        // END HEADER
+
+        // TABLE ROWS
+        if (outputType == OutputType.JSON)
+            outputString.AppendLine(indent+"\"items\" : [");
+        
+        line = sr.ReadLine();
+        if (outputStyle == OutputStyle.GitLabTable) {
+            while (line != null)
+            {
+                // MD or CSV input
+                if (extension == ".md" || extension == ".csv") {
+                    arr = regEx.Matches(line).OfType<Match>()
+                                    .Select(m => {
+                                    if(m.Groups[0].Value.EndsWith(',')){
+                                        return m.Groups[0].Value.Substring(0, m.Groups[0].Value.Length - 1).Replace("\"", "\\\""); // Remove delimiting comma, and add escape character to quotes
+                                    }
+                                    else if (m.Groups[0].Value.StartsWith('\"') && m.Groups[0].Value.EndsWith('\"'))
+                                    {
+                                        return m.Groups[0].Value.Substring(1, m.Groups[0].Value.Length - 2).Replace("\"", "\\\""); // Remove quotes added to encapsulate comma containing string, and add escape character to quotes
+                                    }
+                                    else 
+                                    {
+                                        return m.Groups[0].Value.Trim().Replace("\"", "\\\""); // Trim spaces (especially important with Markdown), and add escape character to quotes
+                                    }
+                                    })
+                                    .ToArray();
+                    // Skip "empty" lines
+                    if (arr.Length == 0 && (line = sr.ReadLine()) != null){
+                        continue;
+                    }
+                } else if (extension == ".json") {
+                    if (line != null && line.Contains("\"items\" : [")) // Skip the "items" line
+                        line = sr.ReadLine();
+
+                    // If reaching end of items, denoted by "],", ensure line is null (for finalizing for JSON input, as there are technically more non-empty lines) and break the loop
+                    if (line == null || line.Trim().StartsWith("],")) {
+                        line = null;
+                        break;
+                    }
+
+                    var itemsList = new List<string>();
+                    for(var i = 0; i < colIdNames.Length; i++) {
+                        var indexStart = line.IndexOf(colIdNames[i]) + colIdNames[i].Length + 4;
+                        var indexEnd = i + 1 >= colIdNames.Length ? line.IndexOf("},") > -1 ? line.Length - 3 : line.Length - 2 : line.IndexOf(colIdNames[i + 1]) - 4;
+
+                        if(indexStart == -1)
+                            throw new Exception($"JSON file does not contain '{colIdNames[i]}' within the 'items' section.");
+
+                        itemsList.Add(line.Substring(indexStart, indexEnd - indexStart)); // Start index + characters until actual label name, length characters + 1 to consider 0 index
+                    }
+                    arr = itemsList.ToArray();
+                }
                 
-            //Read the next line
-            line = sr.ReadLine();
+                if(arr.Length != colFullNames.Length)
+                    throw new Exception($"Column size mismatch between header row and subsequent data row, {colFullNames.Length} vs {arr.Length}, with {arr[arr.Length-1]}");
+
+                // Get source name || TODO: Make this generic for general use
+                var rxCheckForSource = new Regex("Epic|MHH|AllScripts|GECBI|All data sources");
+                var source = rxCheckForSource.Match(arr[sourceIndex]).Value.Trim().Replace(" ", "-");
+
+                // Create row
+                switch (outputType)
+                {
+                    case OutputType.JSON:
+                        outputString.Append(indent+indent+"{");
+                        for (var i = 0; i < arr.Length; i++)
+                        {
+                            outputString.Append("\""+colIdNames[i]+"\": \""+arr[i]+"\"");
+
+                            if(i != arr.Length - 1){
+                                outputString.Append(", ");
+                            }
+                        }
+                        outputString.AppendLine("},");
+                        break;
+                    case OutputType.HTML:
+                        outputString.AppendLine(indent+$"<tr id=\"{arr[idIndex].ToLower()}-{source.ToLower()}\">");
+                        for (var i = 0; i < arr.Length; i++)
+                        {
+                            outputString.AppendLine(indent+indent+$"<td id=\"{colIdNames[i].ToLower()}-{arr[idIndex].ToLower()}-{source.ToLower()}\">{arr[i]}</td>");
+                        }
+                        outputString.AppendLine(indent+"</tr>");
+                        break;
+                    case OutputType.TXT:
+                        outputString.AppendLine();
+                        break;
+                    default:
+                        outputString.AppendLine();
+                        break;
+                }
+                    
+                //Read the next line
+                line = sr.ReadLine();
+            }
+        } else if (outputStyle == OutputStyle.OpenProjectsTable) {
+            for (var i = 0; i < colFullNames.Length; i++)
+            {
+                outputString.AppendLine(indent+$"<tr id=\"{colIdNames[i]}\">");
+                outputString.AppendLine(indent+indent+$"<td>{colFullNames[i]}</td>");
+                outputString.AppendLine(indent+indent+$"<td></td>");
+                outputString.AppendLine(indent+indent+$"<td></td>");
+                outputString.AppendLine(indent+"</tr>");
+            }
         }
         // END TABLE ROWS
 
@@ -225,7 +298,8 @@ try
         Console.WriteLine(outputString); 
 
         // Output to file
-        using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, $"WriteLines_{outputType}_{DateTime.Now.Date.Year+""+DateTime.Now.Date.Month+""+DateTime.Now.Date.Day}.txt")))
+        var date = DateTime.Now.Date.Year.ToString() + (DateTime.Now.Date.Month < 10 ? "0" : "") + DateTime.Now.Date.Month.ToString() + (DateTime.Now.Date.Day < 10 ? "0" : "") + DateTime.Now.Date.Day.ToString();
+        using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, $"WriteLines_{outputStyle}_{outputType}_{date}.txt")))
         {
                 outputFile.WriteLine(outputString);
         }
@@ -248,4 +322,9 @@ enum OutputType {
     TXT,
     JSON,
     HTML
+}
+
+enum OutputStyle {
+    GitLabTable,
+    OpenProjectsTable
 }
