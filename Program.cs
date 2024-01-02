@@ -68,7 +68,8 @@ try
                 outputString.AppendLine(indent+"\"fields\" : [");
                 break;
             case OutputType.HTML:
-                outputString.AppendLine("<tr id=\"table-header\">");
+                outputString.AppendLine("<table>");
+                outputString.AppendLine(indent+"<tr id=\"table-header\">");
                 break;
             case OutputType.TXT:
                 outputString.AppendLine();
@@ -112,7 +113,7 @@ try
                     outputString.AppendLine(",");
                     break;
                 case OutputType.HTML:
-                    outputString.AppendLine(indent+$"<th id=\"{colIdNames[i]}-header\">{colFullNames[i]}</th>");
+                    outputString.AppendLine(indent+indent+$"<th id=\"{colIdNames[i]}-header\">{colFullNames[i]}</th>");
                     break;
                 case OutputType.TXT:
                     outputString.AppendLine();
@@ -129,7 +130,7 @@ try
                 outputString.AppendLine(indent+"],");
                 break;
             case OutputType.HTML:
-                outputString.AppendLine("</tr>");
+                outputString.AppendLine(indent+"</tr>");
                 break;
             case OutputType.TXT:
                 outputString.AppendLine();
@@ -190,12 +191,12 @@ try
                     outputString.AppendLine("},");
                     break;
                 case OutputType.HTML:
-                    outputString.AppendLine($"<tr id=\"{arr[idIndex].ToLower()}-{source.ToLower()}\">");
+                    outputString.AppendLine(indent+$"<tr id=\"{arr[idIndex].ToLower()}-{source.ToLower()}\">");
                     for (var i = 0; i < arr.Length; i++)
                     {
-                        outputString.AppendLine(indent+$"<td id=\"{colIdNames[i].ToLower()}-{arr[idIndex].ToLower()}-{source.ToLower()}\">{arr[i]}</td>");
+                        outputString.AppendLine(indent+indent+$"<td id=\"{colIdNames[i].ToLower()}-{arr[idIndex].ToLower()}-{source.ToLower()}\">{arr[i]}</td>");
                     }
-                    outputString.AppendLine("</tr>");
+                    outputString.AppendLine(indent+"</tr>");
                     break;
                 case OutputType.TXT:
                     outputString.AppendLine();
@@ -210,14 +211,17 @@ try
         }
         // END TABLE ROWS
 
-        // Finalize if needed (JSON)
-        if (line == null && outputType == OutputType.JSON){
+        // Finalize if needed (JSON or HTML)
+        if (line == null && outputType == OutputType.JSON) {
             outputString.Remove(outputString.Length-1, 1); // Remove last comma
             outputString.AppendLine(indent+"],");
             outputString.AppendLine(indent+"\"filter\" : true"); // Add search box
             outputString.AppendLine("}");
             outputString.AppendLine("```");
+        } else if (line == null && outputType == OutputType.HTML) {
+            outputString.AppendLine("</table>");
         }
+
         Console.WriteLine(outputString); 
 
         // Output to file
