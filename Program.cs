@@ -325,7 +325,7 @@ try
 
         // Output to file
         var date = DateTime.Now.Date.Year.ToString() + (DateTime.Now.Date.Month < 10 ? "0" : "") + DateTime.Now.Date.Month.ToString() + (DateTime.Now.Date.Day < 10 ? "0" : "") + DateTime.Now.Date.Day.ToString();
-        using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, $"WriteLines_{outputStyle}_{outputType}_{date}.txt")))
+        using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, $"{docName}_{outputStyle}_{outputType}_{date}.txt")))
         {
                 outputFile.WriteLine(outputString);
         }
